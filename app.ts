@@ -1,7 +1,9 @@
+// import { cursorTo } from "readline";
+
 declare const L: any;
 
 // Comment
-
+const STATUSES = ['manufactured', 'assembled', 'shipped', 'deployed', 'detonated'];
 const LEBANON_BOUNDS = {
     north: 34.69,
     south: 33.05,
@@ -11,24 +13,28 @@ const LEBANON_BOUNDS = {
 
 interface Beeper {
     id: string;
-    status: 'produced' | 'explosives_added' | 'shipped' | 'deployed' | 'detonated';
+    name: string;
+    status: 'manufactured' | 'assembled' | 'shipped' | 'deployed' | 'detonated';
     lat?: number;
     lon?: number;
     productionDate: Date;
     deploymentDate?: Date;
 }
 
+// -- VARIABLES --
 const API_URL = 'http://localhost:3000/api';
 let map: any;
 let markers: { [id: string]: any } = {};
 let currentBeeperId: string;
+let selectedBeeper: string | null = null;
+
 
 document.addEventListener('DOMContentLoaded', () => {
     initMap();
     loadBeepers();
     document.getElementById('add-beeper-form')?.addEventListener('submit', handleAddBeeper);
-    document.getElementById('confirmUpdate')?.addEventListener('click', updateBeeper);
-    document.getElementById('cancelUpdate')?.addEventListener('click', closeModal);
+    // document.getElementById('confirmUpdate')?.addEventListener('click', updateBeeper);
+    // document.getElementById('cancelUpdate')?.addEventListener('click', closeModal);
 });
 
 function initMap() {
@@ -55,13 +61,29 @@ async function loadBeepers() {
             beeperList.innerHTML = '';
             beepers.forEach(beeper => {
                 const li = document.createElement('li');
+                li.id = beeper.id;
                 li.innerHTML = `
-                    <span class="beeper-info">Beeper ${beeper.id} - Status: ${beeper.status}</span>
-                    <button onclick="showUpdateModal('${beeper.id}', '${beeper.status}')">Update</button>
-                    <button onclick="deleteBeeper('${beeper.id}')">Delete</button>
-                    <button onclick="activateBeeper('${beeper.id}')">Activate</button>
-                    <span class="countdown" id="countdown-${beeper.id}"></span>
-                `;
+                    <span class="beeper-info">Beeper ${beeper.name} - Status: ${beeper.status}</span>`;
+
+                if (beeper.status !== 'detonated') {
+                    if (beeper.status === 'shipped') {
+                        li.innerHTML += `<button class="deployable" onclick="selectBeeper('${beeper.id}')">Deploy</button>`;
+                    } else if (beeper.status === 'deployed') {
+                        li.innerHTML += `<span class="countdown" id="countdown-${beeper.id}"></span>`;
+                        li.innerHTML += `<button class="detonatable" onclick="updateStatus('${beeper.id}', '${beeper.status}')">Detonate</button>`;
+                    } else {
+                        li.innerHTML += `<button onclick="updateStatus('${beeper.id}', '${beeper.status}')">Update Status</button>`;
+                    }
+    
+                    if (beeper.status !== 'deployed') {
+                        li.innerHTML += `<button onclick="deleteBeeper('${beeper.id}')">Delete</button>`;
+                    }
+                }
+
+                if (beeper.status === 'detonated') {
+                    li.className = 'detonated';
+                }
+
                 beeperList.appendChild(li);
                 addMarkerToMap(beeper);
             });
@@ -74,14 +96,14 @@ async function loadBeepers() {
 async function handleAddBeeper(event: Event) {
     event.preventDefault();
     const form = event.target as HTMLFormElement;
-    const statusSelect = form.elements.namedItem('status') as HTMLSelectElement;
-    const status = statusSelect.value;
+    const nameAttribute = form.elements.namedItem('beeperName') as HTMLInputElement;
+    const name = nameAttribute.value;
 
     try {
         const response = await fetch(`${API_URL}/beepers`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status })
+            body: JSON.stringify({ name: name })
         });
         if (response.ok) {
             loadBeepers();
@@ -92,39 +114,38 @@ async function handleAddBeeper(event: Event) {
     }
 }
 
-function showUpdateModal(id: string, currentStatus: string) {
-    currentBeeperId = id;
-    const modal = document.getElementById('updateModal') as HTMLElement;
-    const select = document.getElementById('statusSelect') as HTMLSelectElement;
-    const statusOptions = ['produced', 'explosives_added', 'shipped', 'deployed', 'detonated'];
-    
-    select.innerHTML = statusOptions.map(status => 
-        `<option value="${status}" ${status === currentStatus ? 'selected' : ''}>${status}</option>`
-    ).join('');
+async function updateStatus(beeperId: string, currentStatus: string) {
+    const curSIndex: number = STATUSES.findIndex(s => s === currentStatus);
 
-    modal.style.display = 'block';
-}
+    if (curSIndex === -1 || curSIndex === STATUSES.length) {
+        alert(`can't change status: ${STATUSES[curSIndex]} >>`);
+        return;
+    }
 
-async function updateBeeper() {
-    const select = document.getElementById('statusSelect') as HTMLSelectElement;
-    const newStatus = select.value;
+    const newStatus: string = STATUSES[curSIndex + 1];
 
     try {
-        const response = await fetch(`${API_URL}/beepers/${currentBeeperId}`, {
+        const response = await fetch(`${API_URL}/beepers/${beeperId}/status`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status: newStatus })
+            body: JSON.stringify({
+                status: newStatus })
         });
         if (response.ok) {
-            loadBeepers();
-            closeModal();
+            const resObj = await response.json();
+            console.log(resObj);
+            if (newStatus === 'detonated')
+                startCountdown(beeperId, resObj.countdown);
+            else
+                loadBeepers();  // Refresh the beeper list
         } else {
             const errorData = await response.json();
-            alert(`Failed to update beeper: ${errorData.message}`);
+            console.error('Error deploying beeper:', errorData.message);
+            alert(`Failed to deploy beeper: ${errorData.message}`);
         }
     } catch (error) {
-        console.error('Error updating beeper:', error);
-        alert('Failed to update beeper. Please try again.');
+        console.error('Error deploying beeper:', error);
+        alert('Failed to create beeper. Please try again.');
     }
 }
 
@@ -148,39 +169,25 @@ async function deleteBeeper(id: string) {
     }
 }
 
-async function activateBeeper(id: string) {
-    try {
-        const response = await fetch(`${API_URL}/beepers/${id}/activate`, {
-            method: 'POST'
-        });
-        if (response.ok) {
-            const { countdown } = await response.json();
-            startCountdown(id, countdown);
-            // We'll update the beeper's status locally instead of reloading all beepers
-            updateBeeperStatus(id, 'deployed');
-        } else {
-            const errorData = await response.json();
-            console.error('Error activating beeper:', errorData.message);
-            alert(`Failed to activate beeper: ${errorData.message}`);
-        }
-    } catch (error) {
-        console.error('Error activating beeper:', error);
-        alert('Failed to activate beeper. Please try again.');
-    }
+async function selectBeeper(id: string) {
+    selectedBeeper = id;
+
+    (document.getElementById(id) as HTMLLIElement).className = 'deployed';
 }
 
 function startCountdown(id: string, countdown: number) {
     const countdownElement = document.getElementById(`countdown-${id}`);
     if (countdownElement) {
+        (countdownElement.parentElement?.querySelector("button") as HTMLButtonElement).className = 'removeElement';
         countdownElement.textContent = ` Detonating in ${countdown} seconds`;
         const interval = setInterval(() => {
             countdown--;
-            if (countdown >= 0) {
+            if (countdown > 0) {
                 countdownElement.textContent = ` Detonating in ${countdown} seconds`;
             } else {
                 clearInterval(interval);
                 countdownElement.textContent = ' Detonated!';
-                updateBeeperStatus(id, 'detonated');
+                (countdownElement.parentElement as HTMLLIElement).className = 'detonated';
             }
         }, 1000);
     }
@@ -213,6 +220,10 @@ function addMarkerToMap(beeper: Beeper) {
 };
 
 async function onMapClick(e: L.LeafletMouseEvent) {
+    // alert(selectedBeeper);
+    if (!selectedBeeper) 
+        return;
+
     const { lat, lng } = e.latlng;
     
     if (lat < LEBANON_BOUNDS.south || lat > LEBANON_BOUNDS.north || 
@@ -222,10 +233,13 @@ async function onMapClick(e: L.LeafletMouseEvent) {
     }
 
     try {
-        const response = await fetch(`${API_URL}/beepers`, {
-            method: 'POST',
+        const response = await fetch(`${API_URL}/beepers/${selectedBeeper}/status`, {
+            method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ lat, lon: lng, status: 'produced' })
+            body: JSON.stringify({
+                lat: lat,
+                lon: lng,
+                status: 'deployed' })
         });
         if (response.ok) {
             const newBeeper = await response.json();
@@ -233,15 +247,19 @@ async function onMapClick(e: L.LeafletMouseEvent) {
             loadBeepers();  // Refresh the beeper list
         } else {
             const errorData = await response.json();
-            alert(`Failed to create beeper: ${errorData.message}`);
+            console.error('Error deploying beeper:', errorData.message);
+            alert(`Failed to deploy beeper: ${errorData.message}`);
         }
     } catch (error) {
-        console.error('Error creating beeper:', error);
+        console.error('Error deploying beeper:', error);
         alert('Failed to create beeper. Please try again.');
     }
+
+    selectedBeeper = -1;
 }
 
 // Make functions available globally
-(window as any).showUpdateModal = showUpdateModal;
+// (window as any).showUpdateModal = showUpdateModal;
 (window as any).deleteBeeper = deleteBeeper;
-(window as any).activateBeeper = activateBeeper;
+(window as any).selectBeeper = selectBeeper;
+(window as any).updateStatus = updateStatus;

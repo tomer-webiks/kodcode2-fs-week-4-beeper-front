@@ -73,6 +73,27 @@ select, input {
     flex-grow: 1;
 }
 
+.deployable {
+    background-color: darkgreen;
+}
+
+.deployed {
+    background-color: coral;
+}
+
+.detonatable {
+    background-color: red;
+}
+
+.detonated {
+    background-color: black;
+    color: white;
+}
+
+.removeElement {
+    display: none;
+}
+
 .countdown {
     margin-left: 10px;
     font-weight: bold;

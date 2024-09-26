@@ -1,3 +1,4 @@
+// import { cursorTo } from "readline";
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -34,23 +35,27 @@ var __generator = (this && this.__generator) || function (thisArg, body) {
         if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
     }
 };
+// Comment
+var STATUSES = ['manufactured', 'assembled', 'shipped', 'deployed', 'detonated'];
 var LEBANON_BOUNDS = {
     north: 34.69,
     south: 33.05,
     east: 36.62,
     west: 35.10
 };
+// -- VARIABLES --
 var API_URL = 'http://localhost:3000/api';
 var map;
 var markers = {};
 var currentBeeperId;
+var selectedBeeper = null;
 document.addEventListener('DOMContentLoaded', function () {
-    var _a, _b, _c;
+    var _a;
     initMap();
     loadBeepers();
     (_a = document.getElementById('add-beeper-form')) === null || _a === void 0 ? void 0 : _a.addEventListener('submit', handleAddBeeper);
-    (_b = document.getElementById('confirmUpdate')) === null || _b === void 0 ? void 0 : _b.addEventListener('click', updateBeeper);
-    (_c = document.getElementById('cancelUpdate')) === null || _c === void 0 ? void 0 : _c.addEventListener('click', closeModal);
+    // document.getElementById('confirmUpdate')?.addEventListener('click', updateBeeper);
+    // document.getElementById('cancelUpdate')?.addEventListener('click', closeModal);
 });
 function initMap() {
     map = L.map('map', {
@@ -83,7 +88,26 @@ function loadBeepers() {
                         beeperList_1.innerHTML = '';
                         beepers.forEach(function (beeper) {
                             var li = document.createElement('li');
-                            li.innerHTML = "\n                    <span class=\"beeper-info\">Beeper ".concat(beeper.id, " - Status: ").concat(beeper.status, "</span>\n                    <button onclick=\"showUpdateModal('").concat(beeper.id, "', '").concat(beeper.status, "')\">Update</button>\n                    <button onclick=\"deleteBeeper('").concat(beeper.id, "')\">Delete</button>\n                    <button onclick=\"activateBeeper('").concat(beeper.id, "')\">Activate</button>\n                    <span class=\"countdown\" id=\"countdown-").concat(beeper.id, "\"></span>\n                ");
+                            li.id = beeper.id;
+                            li.innerHTML = "\n                    <span class=\"beeper-info\">Beeper ".concat(beeper.name, " - Status: ").concat(beeper.status, "</span>");
+                            if (beeper.status !== 'detonated') {
+                                if (beeper.status === 'shipped') {
+                                    li.innerHTML += "<button class=\"deployable\" onclick=\"selectBeeper('".concat(beeper.id, "')\">Deploy</button>");
+                                }
+                                else if (beeper.status === 'deployed') {
+                                    li.innerHTML += "<span class=\"countdown\" id=\"countdown-".concat(beeper.id, "\"></span>");
+                                    li.innerHTML += "<button class=\"detonatable\" onclick=\"updateStatus('".concat(beeper.id, "', '").concat(beeper.status, "')\">Detonate</button>");
+                                }
+                                else {
+                                    li.innerHTML += "<button onclick=\"updateStatus('".concat(beeper.id, "', '").concat(beeper.status, "')\">Update Status</button>");
+                                }
+                                if (beeper.status !== 'deployed') {
+                                    li.innerHTML += "<button onclick=\"deleteBeeper('".concat(beeper.id, "')\">Delete</button>");
+                                }
+                            }
+                            if (beeper.status === 'detonated') {
+                                li.className = 'detonated';
+                            }
                             beeperList_1.appendChild(li);
                             addMarkerToMap(beeper);
                         });
@@ -100,21 +124,21 @@ function loadBeepers() {
 }
 function handleAddBeeper(event) {
     return __awaiter(this, void 0, void 0, function () {
-        var form, statusSelect, status, response, error_2;
+        var form, nameAttribute, name, response, error_2;
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
                     event.preventDefault();
                     form = event.target;
-                    statusSelect = form.elements.namedItem('status');
-                    status = statusSelect.value;
+                    nameAttribute = form.elements.namedItem('beeperName');
+                    name = nameAttribute.value;
                     _a.label = 1;
                 case 1:
                     _a.trys.push([1, 3, , 4]);
                     return [4 /*yield*/, fetch("".concat(API_URL, "/beepers"), {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ status: status })
+                            body: JSON.stringify({ name: name })
                         })];
                 case 2:
                     response = _a.sent();
@@ -132,50 +156,53 @@ function handleAddBeeper(event) {
         });
     });
 }
-function showUpdateModal(id, currentStatus) {
-    currentBeeperId = id;
-    var modal = document.getElementById('updateModal');
-    var select = document.getElementById('statusSelect');
-    var statusOptions = ['produced', 'explosives_added', 'shipped', 'deployed', 'detonated'];
-    select.innerHTML = statusOptions.map(function (status) {
-        return "<option value=\"".concat(status, "\" ").concat(status === currentStatus ? 'selected' : '', ">").concat(status, "</option>");
-    }).join('');
-    modal.style.display = 'block';
-}
-function updateBeeper() {
+function updateStatus(beeperId, currentStatus) {
     return __awaiter(this, void 0, void 0, function () {
-        var select, newStatus, response, errorData, error_3;
+        var curSIndex, newStatus, response, resObj, errorData, error_3;
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
-                    select = document.getElementById('statusSelect');
-                    newStatus = select.value;
+                    curSIndex = STATUSES.findIndex(function (s) { return s === currentStatus; });
+                    if (curSIndex === -1 || curSIndex === STATUSES.length) {
+                        alert("can't change status: ".concat(STATUSES[curSIndex], " >>"));
+                        return [2 /*return*/];
+                    }
+                    newStatus = STATUSES[curSIndex + 1];
                     _a.label = 1;
                 case 1:
-                    _a.trys.push([1, 6, , 7]);
-                    return [4 /*yield*/, fetch("".concat(API_URL, "/beepers/").concat(currentBeeperId), {
+                    _a.trys.push([1, 7, , 8]);
+                    return [4 /*yield*/, fetch("".concat(API_URL, "/beepers/").concat(beeperId, "/status"), {
                             method: 'PUT',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ status: newStatus })
+                            body: JSON.stringify({
+                                status: newStatus
+                            })
                         })];
                 case 2:
                     response = _a.sent();
-                    if (!response.ok) return [3 /*break*/, 3];
-                    loadBeepers();
-                    closeModal();
-                    return [3 /*break*/, 5];
-                case 3: return [4 /*yield*/, response.json()];
-                case 4:
+                    if (!response.ok) return [3 /*break*/, 4];
+                    return [4 /*yield*/, response.json()];
+                case 3:
+                    resObj = _a.sent();
+                    console.log(resObj);
+                    if (newStatus === 'detonated')
+                        startCountdown(beeperId, resObj.countdown);
+                    else
+                        loadBeepers(); // Refresh the beeper list
+                    return [3 /*break*/, 6];
+                case 4: return [4 /*yield*/, response.json()];
+                case 5:
                     errorData = _a.sent();
-                    alert("Failed to update beeper: ".concat(errorData.message));
-                    _a.label = 5;
-                case 5: return [3 /*break*/, 7];
-                case 6:
+                    console.error('Error deploying beeper:', errorData.message);
+                    alert("Failed to deploy beeper: ".concat(errorData.message));
+                    _a.label = 6;
+                case 6: return [3 /*break*/, 8];
+                case 7:
                     error_3 = _a.sent();
-                    console.error('Error updating beeper:', error_3);
-                    alert('Failed to update beeper. Please try again.');
-                    return [3 /*break*/, 7];
-                case 7: return [2 /*return*/];
+                    console.error('Error deploying beeper:', error_3);
+                    alert('Failed to create beeper. Please try again.');
+                    return [3 /*break*/, 8];
+                case 8: return [2 /*return*/];
             }
         });
     });
@@ -212,56 +239,30 @@ function deleteBeeper(id) {
         });
     });
 }
-function activateBeeper(id) {
+function selectBeeper(id) {
     return __awaiter(this, void 0, void 0, function () {
-        var response, countdown, errorData, error_5;
         return __generator(this, function (_a) {
-            switch (_a.label) {
-                case 0:
-                    _a.trys.push([0, 6, , 7]);
-                    return [4 /*yield*/, fetch("".concat(API_URL, "/beepers/").concat(id, "/activate"), {
-                            method: 'POST'
-                        })];
-                case 1:
-                    response = _a.sent();
-                    if (!response.ok) return [3 /*break*/, 3];
-                    return [4 /*yield*/, response.json()];
-                case 2:
-                    countdown = (_a.sent()).countdown;
-                    startCountdown(id, countdown);
-                    // We'll update the beeper's status locally instead of reloading all beepers
-                    updateBeeperStatus(id, 'deployed');
-                    return [3 /*break*/, 5];
-                case 3: return [4 /*yield*/, response.json()];
-                case 4:
-                    errorData = _a.sent();
-                    console.error('Error activating beeper:', errorData.message);
-                    alert("Failed to activate beeper: ".concat(errorData.message));
-                    _a.label = 5;
-                case 5: return [3 /*break*/, 7];
-                case 6:
-                    error_5 = _a.sent();
-                    console.error('Error activating beeper:', error_5);
-                    alert('Failed to activate beeper. Please try again.');
-                    return [3 /*break*/, 7];
-                case 7: return [2 /*return*/];
-            }
+            selectedBeeper = id;
+            document.getElementById(id).className = 'deployed';
+            return [2 /*return*/];
         });
     });
 }
 function startCountdown(id, countdown) {
+    var _a;
     var countdownElement = document.getElementById("countdown-".concat(id));
     if (countdownElement) {
+        ((_a = countdownElement.parentElement) === null || _a === void 0 ? void 0 : _a.querySelector("button")).className = 'removeElement';
         countdownElement.textContent = " Detonating in ".concat(countdown, " seconds");
         var interval_1 = setInterval(function () {
             countdown--;
-            if (countdown >= 0) {
+            if (countdown > 0) {
                 countdownElement.textContent = " Detonating in ".concat(countdown, " seconds");
             }
             else {
                 clearInterval(interval_1);
                 countdownElement.textContent = ' Detonated!';
-                updateBeeperStatus(id, 'detonated');
+                countdownElement.parentElement.className = 'detonated';
             }
         }, 1000);
     }
@@ -295,10 +296,13 @@ function addMarkerToMap(beeper) {
 ;
 function onMapClick(e) {
     return __awaiter(this, void 0, void 0, function () {
-        var _a, lat, lng, response, newBeeper, errorData, error_6;
+        var _a, lat, lng, response, newBeeper, errorData, error_5;
         return __generator(this, function (_b) {
             switch (_b.label) {
                 case 0:
+                    // alert(selectedBeeper);
+                    if (!selectedBeeper)
+                        return [2 /*return*/];
                     _a = e.latlng, lat = _a.lat, lng = _a.lng;
                     if (lat < LEBANON_BOUNDS.south || lat > LEBANON_BOUNDS.north ||
                         lng < LEBANON_BOUNDS.west || lng > LEBANON_BOUNDS.east) {
@@ -308,10 +312,14 @@ function onMapClick(e) {
                     _b.label = 1;
                 case 1:
                     _b.trys.push([1, 7, , 8]);
-                    return [4 /*yield*/, fetch("".concat(API_URL, "/beepers"), {
-                            method: 'POST',
+                    return [4 /*yield*/, fetch("".concat(API_URL, "/beepers/").concat(selectedBeeper, "/status"), {
+                            method: 'PUT',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ lat: lat, lon: lng, status: 'produced' })
+                            body: JSON.stringify({
+                                lat: lat,
+                                lon: lng,
+                                status: 'deployed'
+                            })
                         })];
                 case 2:
                     response = _b.sent();
@@ -325,20 +333,24 @@ function onMapClick(e) {
                 case 4: return [4 /*yield*/, response.json()];
                 case 5:
                     errorData = _b.sent();
-                    alert("Failed to create beeper: ".concat(errorData.message));
+                    console.error('Error deploying beeper:', errorData.message);
+                    alert("Failed to deploy beeper: ".concat(errorData.message));
                     _b.label = 6;
                 case 6: return [3 /*break*/, 8];
                 case 7:
-                    error_6 = _b.sent();
-                    console.error('Error creating beeper:', error_6);
+                    error_5 = _b.sent();
+                    console.error('Error deploying beeper:', error_5);
                     alert('Failed to create beeper. Please try again.');
                     return [3 /*break*/, 8];
-                case 8: return [2 /*return*/];
+                case 8:
+                    selectedBeeper = -1;
+                    return [2 /*return*/];
             }
         });
     });
 }
 // Make functions available globally
-window.showUpdateModal = showUpdateModal;
+// (window as any).showUpdateModal = showUpdateModal;
 window.deleteBeeper = deleteBeeper;
-window.activateBeeper = activateBeeper;
+window.selectBeeper = selectBeeper;
+window.updateStatus = updateStatus;
