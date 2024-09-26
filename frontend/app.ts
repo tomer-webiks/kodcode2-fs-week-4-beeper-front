@@ -1,5 +1,7 @@
 declare const L: any;
 
+// Comment
+
 const LEBANON_BOUNDS = {
     north: 34.69,
     south: 33.05,
